@@ -1,0 +1,6 @@
+node_modules
+out
+release
+test-results
+build
+pnpm-lock.yaml

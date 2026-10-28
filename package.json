@@ -1,0 +1,80 @@
+{
+  "name": "tok-farm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Turn long match videos into vertical reels.",
+  "author": "Tok Farm",
+  "license": "MIT",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "prepare:tools": "node scripts/prepare-tools.cjs",
+    "dev": "pnpm prepare:tools && electron-vite dev",
+    "build": "pnpm prepare:tools && pnpm typecheck && electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm prepare:tools && vitest run",
+    "test:media": "pnpm prepare:tools && vitest run tests/media.test.ts",
+    "test:e2e": "pnpm build && tsx tests/acceptance.ts",
+    "package": "pnpm build && electron-builder --win nsis --x64",
+    "package:dir": "pnpm build && electron-builder --win dir --x64"
+  },
+  "devDependencies": {
+    "@derhuerst/ffprobe-static": "5.3.0",
+    "@playwright/test": "^1.58.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "electron": "45.1.0",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "6.0.0",
+    "ffmpeg-static": "5.3.0",
+    "lucide-react": "^0.577.0",
+    "prettier": "^3.9.10",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.0",
+    "zod": "^4.3.0"
+  },
+  "build": {
+    "appId": "com.tokfarm.editor",
+    "productName": "Tok Farm",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "build/video-tools",
+        "to": "video-tools"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "artifactName": "Tok-Farm-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true
+    }
+  }
+}

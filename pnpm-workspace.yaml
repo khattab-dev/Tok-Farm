@@ -1,0 +1,8 @@
+allowBuilds:
+  '@derhuerst/ffprobe-static': true
+  electron: true
+  electron-winstaller: false
+  esbuild: true
+  ffmpeg-static: true
+minimumReleaseAgeExclude:
+  - electron@45.1.0
