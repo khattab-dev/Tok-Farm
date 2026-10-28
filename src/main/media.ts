@@ -5,7 +5,8 @@ import { basename, join, resolve } from 'node:path'
 import { cpus } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
 import type { Clip, Media } from '../shared/model'
-import { cropGeometry, panExpression } from '../shared/crop'
+import { panExpression } from '../shared/crop'
+import { blurredBackgroundLayout, frameLayout, outputSize, resolveFraming } from '../shared/framing'
 
 const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
 const toolsRoot =
@@ -148,11 +149,24 @@ export async function assertSource(media: Media) {
 export const encodeThreads = Math.max(1, Math.min(4, Math.floor(cpus().length / 2)))
 
 export function exportArgs(media: Media, clip: Clip, output: string): string[] {
-  const crop = cropGeometry(media.width, media.height, 0.5, 0.5)
-  const x = panExpression(clip.keyframes, 'x', clip.start),
-    y = panExpression(clip.keyframes, 'y', clip.start)
+  const framing = resolveFraming(clip.framing)
+  const layout = frameLayout(media.width, media.height, framing, {
+    x: framing.positionX,
+    y: framing.positionY
+  })
+  const { width, height } = layout.canvas
+  const x = panExpression(clip.keyframes, 'x', clip.start, framing.positionX),
+    y = panExpression(clip.keyframes, 'y', clip.start, framing.positionY)
   const fps = media.fps > 60 ? '60' : media.fpsExpression
-  const filter = `setpts=PTS-STARTPTS,scale=${media.width}:${media.height},setsar=1,crop=${crop.width}:${crop.height}:x='(iw-ow)*(${x})':y='(ih-oh)*(${y})',scale=1080:1920:flags=lanczos,fps=${fps},format=yuv420p`
+  const normalized = `[0:v:0]setpts=PTS-STARTPTS,scale=${media.width}:${media.height},setsar=1`
+  let filter: string
+  if (framing.background === 'blur' && (layout.width < width || layout.height < height)) {
+    const back = blurredBackgroundLayout(media.width, media.height, framing)
+    filter = `${normalized},split=2[front][back];[front]scale=${layout.width}:${layout.height}:flags=bicubic[fg];[back]scale=${back.width}:${back.height}:flags=bicubic,crop=${back.paddedWidth}:${back.paddedHeight},gblur=sigma=${framing.blur}:steps=2,crop=${width}:${height}:${back.padding}:${back.padding}[bg];`
+  } else {
+    filter = `${normalized},scale=${layout.width}:${layout.height}:flags=bicubic[fg];color=c=0x${framing.backgroundColor.slice(1)}:s=${width}x${height}:r=${fps}[bg];`
+  }
+  filter += `[bg][fg]overlay=x='floor((W-w)*(${x})/2)*2':y='floor((H-h)*(${y})/2)*2':eval=frame:shortest=1,fps=${fps},format=yuv420p[outv]`
   const args = [
     '-hide_banner',
     '-loglevel',
@@ -168,10 +182,10 @@ export function exportArgs(media: Media, clip: Clip, output: string): string[] {
     '-t',
     String(clip.end - clip.start),
     '-map',
-    '0:v:0',
-    '-vf',
+    '[outv]',
+    '-filter_complex',
     filter,
-    '-filter_threads',
+    '-filter_complex_threads',
     String(encodeThreads),
     '-c:v',
     'libx264',
@@ -256,17 +270,20 @@ export async function exportClip(
   try {
     // Filter scripts avoid Windows command-line length limits for long pan paths.
     const args = exportArgs(media, clip, temporary),
-      filterIndex = args.indexOf('-vf')
+      filterIndex = args.indexOf('-filter_complex')
     await writeFile(filterFile, args[filterIndex + 1], 'utf8')
-    args.splice(filterIndex, 2, '-filter_script:v', filterFile)
+    args.splice(filterIndex, 2, '-filter_complex_script', filterFile)
     await runProcess(ffmpegPath, args, { signal, duration: clip.end - clip.start, onProgress })
     if (signal.aborted) throw new CancelledError()
     const data = await rawProbe(temporary)
     if (signal.aborted) throw new CancelledError()
+    const dimensions = outputSize(clip.framing)
     if (
       !data.streams?.some(
         (stream: any) =>
-          stream.codec_type === 'video' && stream.width === 1080 && stream.height === 1920
+          stream.codec_type === 'video' &&
+          stream.width === dimensions.width &&
+          stream.height === dimensions.height
       )
     )
       throw new Error('Export validation failed: invalid video output.')

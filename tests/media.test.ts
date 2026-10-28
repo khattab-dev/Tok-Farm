@@ -13,6 +13,7 @@ import {
   runProcess
 } from '../src/main/media'
 import type { Clip } from '../src/shared/model'
+import { frameLayout, resolveFraming, ASPECT_RATIOS } from '../src/shared/framing'
 
 describe('real FFmpeg exports', () => {
   let directory: string, source: string
@@ -189,6 +190,137 @@ describe('real FFmpeg exports', () => {
     const proxy = await probeMedia(path)
     expect(proxy.codec).toBe('h264')
     expect(Math.abs(proxy.duration - media.duration)).toBeLessThan(0.1)
+  })
+  it('fits the whole picture over solid or blurred backgrounds with matching placement and zoom', async () => {
+    const media = await probeMedia(source)
+    for (const background of ['color', 'blur'] as const) {
+      const framing = resolveFraming({
+        mode: 'fit',
+        background,
+        backgroundColor: '#00ff00',
+        zoom: 0.75,
+        positionX: 0.2,
+        positionY: 0.8
+      })
+      const selected = { ...clip(0, 0.3), name: `Fit ${background}`, framing, keyframes: [] }
+      const output = await exportClip(
+        media,
+        selected,
+        directory,
+        new AbortController().signal,
+        () => {}
+      )
+      const pixels = join(directory, `${background}.rgb`)
+      await runProcess(ffmpegPath, [
+        '-loglevel',
+        'error',
+        '-y',
+        '-i',
+        output,
+        '-frames:v',
+        '1',
+        '-pix_fmt',
+        'rgb24',
+        '-f',
+        'rawvideo',
+        pixels
+      ])
+      const data = await readFile(pixels),
+        layout = frameLayout(media.width, media.height, framing, { x: 0.2, y: 0.8 })
+      const pixel = (x: number, y: number) =>
+        Array.from(data.subarray((y * 1080 + x) * 3, (y * 1080 + x) * 3 + 3))
+      const left = pixel(layout.x + 40, layout.y + 40),
+        right = pixel(layout.x + layout.width - 40, layout.y + 40)
+      expect(left[0]).toBeGreaterThan(220)
+      expect(left[2]).toBeLessThan(30)
+      expect(right[2]).toBeGreaterThan(220)
+      expect(right[0]).toBeLessThan(30)
+      if (background === 'color') {
+        for (const [x, y] of [
+          [40, 40],
+          [40, 1880],
+          [layout.x - 10, layout.y + 40],
+          [layout.x + 40, layout.y - 10],
+          [layout.x + 40, layout.y + layout.height + 10]
+        ]) {
+          const p = pixel(x, y)
+          expect(p[1]).toBeGreaterThan(220)
+          expect(p[0] + p[2]).toBeLessThan(40)
+        }
+      } else {
+        const topLeft = pixel(40, 40),
+          topRight = pixel(1040, 40)
+        expect(topLeft[0]).toBeGreaterThan(topLeft[2] + 100)
+        expect(topRight[2]).toBeGreaterThan(topRight[0] + 100)
+        expect(topLeft[1] + topRight[1]).toBeLessThan(40)
+      }
+    }
+  })
+  it('exports every selectable aspect ratio and animates fitted placement in source time', async () => {
+    const media = await probeMedia(source)
+    for (const aspectRatio of ['4:5', '1:1', '16:9'] as const) {
+      const output = await exportClip(
+        media,
+        {
+          ...clip(0, 0.2),
+          name: aspectRatio,
+          framing: resolveFraming({ aspectRatio, mode: 'fit' })
+        },
+        directory,
+        new AbortController().signal,
+        () => {}
+      )
+      const data = await rawProbe(output)
+      expect(data.streams[0].width).toBe(ASPECT_RATIOS[aspectRatio].width)
+      expect(data.streams[0].height).toBe(ASPECT_RATIOS[aspectRatio].height)
+    }
+    const selected = {
+      ...clip(0.5, 1.5),
+      name: 'Moving fit',
+      framing: resolveFraming({ mode: 'fit', background: 'color', backgroundColor: '#00ff00' }),
+      keyframes: [
+        { id: randomUUID(), time: 0.6, x: 0.5, y: 0 },
+        { id: randomUUID(), time: 1.4, x: 0.5, y: 1 }
+      ]
+    }
+    const output = await exportClip(
+      media,
+      selected,
+      directory,
+      new AbortController().signal,
+      () => {}
+    )
+    for (const [time, isVideo] of [
+      [0, true],
+      [0.5, false],
+      [0.95, false]
+    ] as const) {
+      const pixels = join(directory, `moving-${time}.rgb`)
+      await runProcess(ffmpegPath, [
+        '-loglevel',
+        'error',
+        '-y',
+        '-ss',
+        String(time),
+        '-i',
+        output,
+        '-frames:v',
+        '1',
+        '-vf',
+        'crop=4:4:40:40,scale=1:1',
+        '-pix_fmt',
+        'rgb24',
+        '-f',
+        'rawvideo',
+        pixels
+      ])
+      const data = await readFile(pixels)
+      expect(
+        data.length,
+        `Missing frame at ${time}; ${JSON.stringify((await rawProbe(output)).streams[0])}`
+      ).toBe(3)
+      expect(data[isVideo ? 0 : 1]).toBeGreaterThan(220)
+    }
   })
   it('reports missing, changed, corrupt sources and unwritable destinations; cleans cancelled output', async () => {
     const media = await probeMedia(source)

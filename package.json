@@ -1,6 +1,6 @@
 {
   "name": "tok-farm",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Turn long match videos into vertical reels.",
   "author": "Tok Farm",
@@ -9,6 +9,7 @@
   "scripts": {
     "prepare:tools": "node scripts/prepare-tools.cjs",
     "prepare:analysis": "node scripts/prepare-analysis.cjs",
+    "prepare:qwen": "node scripts/prepare-qwen.cjs",
     "dev": "pnpm prepare:tools && pnpm prepare:analysis && electron-vite dev",
     "build": "pnpm prepare:tools && pnpm prepare:analysis && pnpm typecheck && electron-vite build",
     "preview": "electron-vite preview",
@@ -19,6 +20,7 @@
     "test:media": "pnpm prepare:tools && vitest run tests/media.test.ts",
     "test:e2e": "pnpm build && tsx tests/acceptance.ts",
     "test:highlights:e2e": "pnpm build && tsx tests/highlight-acceptance.ts",
+    "test:framing:e2e": "pnpm build && tsx tests/framing-acceptance.ts",
     "package": "pnpm build && electron-builder --win nsis --x64",
     "package:dir": "pnpm build && electron-builder --win dir --x64"
   },

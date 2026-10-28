@@ -8,6 +8,7 @@ import { HighlightScanner } from '../src/main/highlight-scanner'
 import { CancelledError } from '../src/main/media'
 import type { Project } from '../src/shared/model'
 import type { HighlightSuggestion } from '../src/shared/highlights'
+import { resolveFraming } from '../src/shared/framing'
 
 const options = {
   profile: 'general' as const,
@@ -79,12 +80,18 @@ describe('highlight scan lifecycle', () => {
       )
     await scanner.start(project.id, options)
     await until(() => scanner.get(project.id)?.status === 'completed')
-    const edited = { ...project, name: 'My renamed recording' }
+    const edited = {
+      ...project,
+      name: 'My renamed recording',
+      framing: resolveFraming({ mode: 'fit', aspectRatio: '1:1', positionY: 0.7 })
+    }
     await store.saveProject(edited)
     expect(scanner.get(project.id)?.suggestions).toHaveLength(1)
     const clip = await scanner.accept(edited, item.id)
     expect(clip.start).toBe(10)
     expect(clip.keyframes).toHaveLength(1)
+    expect(clip.framing).toEqual(edited.framing)
+    expect(clip.keyframes[0].y).toBe(0.7)
     const saved = store.getProject(project.id)
     expect(saved.name).toBe('My renamed recording')
     expect(saved.clips).toHaveLength(1)

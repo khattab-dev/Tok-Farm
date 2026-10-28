@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "model": "Qwen/Qwen3-VL-2B-Instruct-GGUF",
+  "modelRevision": "52d6c8ffea26cc873ac5ad116f8631268d7eb503",
+  "runtime": "ggml-org/llama.cpp",
+  "runtimeRevision": "8642541b255bfb5dc39cd351a178be09013a55d6",
+  "runtimeTag": "b11960",
+  "assets": [
+    {
+      "name": "Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+      "kind": "model",
+      "size": 1107409952,
+      "sha256": "089d75c52f4b7ffc56ba998ffc50aae89fcafc755f9e7208aacca281dca6c2ae",
+      "url": "https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF/resolve/52d6c8ffea26cc873ac5ad116f8631268d7eb503/Qwen3VL-2B-Instruct-Q4_K_M.gguf"
+    },
+    {
+      "name": "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf",
+      "kind": "model",
+      "size": 445053216,
+      "sha256": "f9a68fabba69c3b81e153367b2c7521030b0fa8bb0de400c9599c8e6725f9c82",
+      "url": "https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF/resolve/52d6c8ffea26cc873ac5ad116f8631268d7eb503/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+    },
+    {
+      "name": "llama-b11960-bin-win-vulkan-x64.zip",
+      "kind": "vulkan",
+      "size": 37345851,
+      "sha256": "bac6914b5e83523eb008c6789eaa12669f93fbc196c3b9e8237b6672323b33e9",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11960/llama-b11960-bin-win-vulkan-x64.zip"
+    },
+    {
+      "name": "llama-b11960-bin-win-cpu-x64.zip",
+      "kind": "cpu",
+      "size": 24407745,
+      "sha256": "73f962f82850d244db47eaacb9d913637027b82399124324298576d58c5f4287",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11960/llama-b11960-bin-win-cpu-x64.zip"
+    }
+  ],
+  "licenses": [
+    {
+      "name": "LLAMA-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/8642541b255bfb5dc39cd351a178be09013a55d6/LICENSE"
+    },
+    {
+      "name": "QWEN-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/QwenLM/Qwen3-VL/96588727e44c78b25ba03ea03b8e12f7e64fd0da/LICENSE"
+    }
+  ]
+}

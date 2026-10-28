@@ -33,10 +33,15 @@ export function cropGeometry(width: number, height: number, x: number, y: number
   }
 }
 
-export function panExpression(keyframes: CropKeyframe[], axis: 'x' | 'y', start: number): string {
+export function panExpression(
+  keyframes: CropKeyframe[],
+  axis: 'x' | 'y',
+  start: number,
+  fallback = 0.5
+): string {
   // FFmpeg's t is reset to clip time; stored keyframes stay in source time.
   const points = sortedPositions(keyframes)
-  if (!points.length) return '0.5'
+  if (!points.length) return String(fallback)
   const num = (n: number) => Number(n.toFixed(9)).toString()
   let expression = num(points[points.length - 1][axis])
   for (let i = points.length - 2; i >= 0; i--) {

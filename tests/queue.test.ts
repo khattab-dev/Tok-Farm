@@ -7,6 +7,7 @@ import { Store } from '../src/main/storage'
 import { ExportQueue, type ExportWorker } from '../src/main/queue'
 import { CancelledError } from '../src/main/media'
 import type { Project } from '../src/shared/model'
+import { resolveFraming } from '../src/shared/framing'
 
 export function fixtureProject(): Project {
   return {
@@ -151,6 +152,30 @@ describe('persistent export queue', () => {
     expect(restored.projects).toEqual([])
     const { readdir } = await import('node:fs/promises')
     expect((await readdir(directory)).some((name) => name.includes('.recovery-'))).toBe(true)
+  })
+  it('persists per-shot layouts and defaults while keeping queued layouts independent of later edits', async () => {
+    const project = fixtureProject()
+    project.framing = resolveFraming({ mode: 'fit', aspectRatio: '1:1' })
+    project.clips[0].framing = resolveFraming({
+      mode: 'fit',
+      zoom: 0.75,
+      background: 'color',
+      backgroundColor: '#123456',
+      positionY: 0.8
+    })
+    const snapshot = structuredClone(project.clips[0].framing)
+    store.projects.push(project)
+    const queue = new ExportQueue(store, () => {})
+    await queue.enqueue(project, [project.clips[0].id, project.clips[1].id])
+    project.clips[0].framing.zoom = 2
+    project.framing.aspectRatio = '16:9'
+    await store.persist()
+    const restored = new Store(directory)
+    await restored.load()
+    expect(restored.queue.jobs[0].clip.framing).toEqual(snapshot)
+    expect(restored.projects[0].clips[0].framing?.zoom).toBe(2)
+    expect(restored.projects[0].framing?.aspectRatio).toBe('16:9')
+    expect(resolveFraming(restored.queue.jobs[1].clip.framing).mode).toBe('fill')
   })
   it('stops safely when a queue checkpoint cannot be saved and allows retry', async () => {
     const persist = store.persist.bind(store)

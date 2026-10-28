@@ -4,6 +4,7 @@ import type { Clip, Project } from '../shared/model'
 import type { HighlightScan, ScanOptions } from '../shared/highlights'
 import { highlightSourceKey, scanHighlights } from './highlight-engine'
 import { assertSource } from './media'
+import { resolveFraming } from '../shared/framing'
 
 export class HighlightScanner {
   private active?: { projectId: string; controller: AbortController; task: Promise<void> }
@@ -121,7 +122,15 @@ export class HighlightScanner {
       start: suggestion.start,
       end: suggestion.end,
       muted: false,
-      keyframes: [{ id: randomUUID(), time: suggestion.start, x: 0.5, y: 0.5 }]
+      framing: resolveFraming(current.framing),
+      keyframes: [
+        {
+          id: randomUUID(),
+          time: suggestion.start,
+          x: current.framing?.positionX ?? 0.5,
+          y: current.framing?.positionY ?? 0.5
+        }
+      ]
     }
     current.clips.push(clip)
     current.updatedAt = Date.now()

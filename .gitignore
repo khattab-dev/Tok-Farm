@@ -8,3 +8,4 @@ test-results/
 build/video-tools/
 build/analysis-runtime/
 build/model-cache/
+build/qwen-runtime/

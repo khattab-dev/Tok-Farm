@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type RefObject
 } from 'react'
@@ -30,6 +31,7 @@ import {
   RotateCcw,
   Scissors,
   ScanSearch,
+  SlidersHorizontal,
   SkipBack,
   SkipForward,
   Sparkles,
@@ -51,7 +53,17 @@ import type {
 } from '../../shared/model'
 import type { HighlightScan, HighlightSuggestion, ScanOptions } from '../../shared/highlights'
 import { HighlightPanel } from './HighlightPanel'
-import { cropGeometry, parseTimecode, positionAt, timecode } from '../../shared/crop'
+import { parseTimecode, positionAt, timecode } from '../../shared/crop'
+import {
+  ASPECT_RATIOS,
+  frameLayout,
+  outputSize,
+  resolveFraming,
+  type AspectRatio,
+  type FramingSettings
+} from '../../shared/framing'
+import { drawFramedPreview } from './frame-preview'
+import { FramingControls } from './FramingControls'
 
 const api = window.tokfarm
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -122,6 +134,9 @@ function Player({
   currentTime,
   onTime,
   onCrop,
+  framing,
+  onFraming,
+  onCustomize,
   notify,
   onDecodeError
 }: {
@@ -133,6 +148,9 @@ function Player({
   currentTime: number
   onTime: (time: number) => void
   onCrop: (position: { x: number; y: number }, time: number) => void
+  framing: FramingSettings
+  onFraming: (patch: Partial<FramingSettings>) => void
+  onCustomize: () => void
   notify: (message: string) => void
   onDecodeError: () => void
 }) {
@@ -148,13 +166,20 @@ function Player({
     x: number
     y: number
     time: number
+    kind: 'source' | 'preview'
     latest: { x: number; y: number }
   } | null>(null)
   const keys = clip?.keyframes || draftKeys
-  const pos = drag || positionAt(keys, currentTime),
-    geometry = cropGeometry(media.width, media.height, pos.x, pos.y)
-  const state = useRef({ keys, drag, clip })
-  state.current = { keys, drag, clip }
+  const pos =
+      drag ||
+      (keys.length
+        ? positionAt(keys, currentTime)
+        : { x: framing.positionX, y: framing.positionY }),
+    layout = frameLayout(media.width, media.height, framing, pos),
+    geometry = layout.visible
+  const dimensions = outputSize(framing)
+  const state = useRef({ keys, drag, clip, framing })
+  state.current = { keys, drag, clip, framing }
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
       const ratio = media.width / media.height,
@@ -175,19 +200,13 @@ function Player({
           lastTime = video.currentTime
           onTime(video.currentTime)
         }
-        const position = state.current.drag || positionAt(state.current.keys, video.currentTime)
-        const rect = cropGeometry(media.width, media.height, position.x, position.y)
-        context?.drawImage(
-          video,
-          (rect.x / media.width) * video.videoWidth,
-          (rect.y / media.height) * video.videoHeight,
-          (rect.width / media.width) * video.videoWidth,
-          (rect.height / media.height) * video.videoHeight,
-          0,
-          0,
-          360,
-          640
-        )
+        const current = state.current
+        const position =
+          current.drag ||
+          (current.keys.length
+            ? positionAt(current.keys, video.currentTime)
+            : { x: current.framing.positionX, y: current.framing.positionY })
+        if (context) drawFramedPreview(context, video, media, current.framing, position)
       }
       frame = requestAnimationFrame(draw)
     }
@@ -204,15 +223,53 @@ function Player({
   function moveCrop(event: ReactPointerEvent) {
     const start = dragRef.current
     if (!start) return
-    const availableX = size.width * (1 - geometry.width / media.width),
-      availableY = size.height * (1 - geometry.height / media.height)
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const availableX =
+        start.kind === 'preview'
+          ? ((layout.canvas.width - layout.width) / layout.canvas.width) * bounds.width
+          : size.width * (1 - geometry.width / media.width),
+      availableY =
+        start.kind === 'preview'
+          ? ((layout.canvas.height - layout.height) / layout.canvas.height) * bounds.height
+          : size.height * (1 - geometry.height / media.height)
     const next = {
       x:
-        availableX > 0 ? clamp(start.x + (event.clientX - start.pointerX) / availableX, 0, 1) : 0.5,
-      y: availableY > 0 ? clamp(start.y + (event.clientY - start.pointerY) / availableY, 0, 1) : 0.5
+        Math.abs(availableX) > 0.01
+          ? clamp(start.x + (event.clientX - start.pointerX) / availableX, 0, 1)
+          : start.x,
+      y:
+        Math.abs(availableY) > 0.01
+          ? clamp(start.y + (event.clientY - start.pointerY) / availableY, 0, 1)
+          : start.y
     }
     start.latest = next
     setDrag(next)
+  }
+  function beginDrag(event: ReactPointerEvent, kind: 'source' | 'preview') {
+    if (kind === 'source' && !layout.cropped) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const time = clip
+      ? clamp(videoRef.current?.currentTime || 0, clip.start, clip.end)
+      : videoRef.current?.currentTime || 0
+    if (videoRef.current) {
+      videoRef.current.pause()
+      videoRef.current.currentTime = time
+    }
+    dragRef.current = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      x: pos.x,
+      y: pos.y,
+      time,
+      kind,
+      latest: pos
+    }
+    setDrag(pos)
+  }
+  function endDrag() {
+    if (dragRef.current) onCrop(dragRef.current.latest, dragRef.current.time)
+    dragRef.current = null
+    setDrag(null)
   }
   return (
     <section className="viewer-panel">
@@ -226,6 +283,42 @@ function Player({
         <div className="source-meta">
           <span className="green-dot" />
           {Math.round(media.fps * 100) / 100} fps <span>·</span> {timecode(media.duration)}
+        </div>
+        <div className="framing-toolbar" data-framing-controls>
+          <select
+            aria-label="Output aspect ratio"
+            value={framing.aspectRatio}
+            onChange={(event) => onFraming({ aspectRatio: event.target.value as AspectRatio })}
+          >
+            {Object.keys(ASPECT_RATIOS).map((ratio) => (
+              <option key={ratio} value={ratio}>
+                {ratio}
+              </option>
+            ))}
+          </select>
+          <button
+            className={framing.mode === 'fill' ? 'active' : ''}
+            aria-label="Fill frame"
+            title="Fill the canvas by cropping edges"
+            onClick={() => onFraming({ mode: 'fill', zoom: 1 })}
+          >
+            Fill
+          </button>
+          <button
+            className={framing.mode === 'fit' ? 'active' : ''}
+            aria-label="Fit full video"
+            onClick={() => onFraming({ mode: 'fit', zoom: 1 })}
+          >
+            Fit full video
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Customize framing"
+            title="Customize zoom, position and background"
+            onClick={onCustomize}
+          >
+            <SlidersHorizontal size={14} />
+          </button>
         </div>
       </div>
       <div className="monitors">
@@ -248,6 +341,7 @@ function Player({
               />
               <div
                 className="crop-shade"
+                hidden={!layout.cropped}
                 style={{
                   left: `${(geometry.x / media.width) * 100}%`,
                   top: `${(geometry.y / media.height) * 100}%`,
@@ -256,7 +350,7 @@ function Player({
                 }}
               />
               <div
-                className={`crop-overlay ${drag ? 'is-dragging' : ''}`}
+                className={`crop-overlay ${drag ? 'is-dragging' : ''} ${!layout.cropped ? 'full-picture' : ''}`}
                 data-testid="crop-overlay"
                 style={{
                   left: `${(geometry.x / media.width) * 100}%`,
@@ -264,38 +358,16 @@ function Player({
                   width: `${(geometry.width / media.width) * 100}%`,
                   height: `${(geometry.height / media.height) * 100}%`
                 }}
-                onPointerDown={(event) => {
-                  event.currentTarget.setPointerCapture(event.pointerId)
-                  const time = clip
-                    ? clamp(videoRef.current?.currentTime || 0, clip.start, clip.end)
-                    : videoRef.current?.currentTime || 0
-                  if (videoRef.current) {
-                    videoRef.current.pause()
-                    videoRef.current.currentTime = time
-                  }
-                  dragRef.current = {
-                    pointerX: event.clientX,
-                    pointerY: event.clientY,
-                    x: pos.x,
-                    y: pos.y,
-                    time,
-                    latest: pos
-                  }
-                  setDrag(pos)
-                }}
+                onPointerDown={(event) => beginDrag(event, 'source')}
                 onPointerMove={moveCrop}
-                onPointerUp={() => {
-                  if (dragRef.current) onCrop(dragRef.current.latest, dragRef.current.time)
-                  dragRef.current = null
-                  setDrag(null)
-                }}
+                onPointerUp={endDrag}
                 onPointerCancel={() => {
                   dragRef.current = null
                   setDrag(null)
                 }}
               >
                 <span className="crop-tag">
-                  <Crop size={10} /> 9:16
+                  <Crop size={10} /> {layout.cropped ? framing.aspectRatio : 'Full video'}
                 </span>
                 <span className="crop-cross">+</span>
                 <i className="corner tl" />
@@ -360,22 +432,41 @@ function Player({
             </select>
           </div>
         </div>
-        <div className="vertical-column">
+        <div
+          className={`vertical-column ${dimensions.width > dimensions.height ? 'landscape' : ''}`}
+          style={{ '--preview-ratio': dimensions.width / dimensions.height } as CSSProperties}
+        >
           <div className="preview-label">
             <Frame size={13} /> REEL PREVIEW
           </div>
           <div className="vertical-frame">
-            <canvas ref={canvas} width={360} height={640} />
+            <canvas
+              ref={canvas}
+              width={dimensions.width / 3}
+              height={dimensions.height / 3}
+              aria-label="Reel framing preview"
+              onPointerDown={(event) => beginDrag(event, 'preview')}
+              onPointerMove={moveCrop}
+              onPointerUp={endDrag}
+              onPointerCancel={() => {
+                dragRef.current = null
+                setDrag(null)
+              }}
+            />
             <span className="preview-live">LIVE</span>
           </div>
           <span className="preview-resolution">
-            1080 × 1920 <span>·</span> 9:16
+            {dimensions.width} × {dimensions.height} <span>·</span> {framing.aspectRatio}
           </span>
         </div>
       </div>
       <div className="viewer-foot">
         <Crop size={13} />
-        <span>Drag the frame to set a crop position at the playhead.</span>
+        <span>
+          {framing.mode === 'fit'
+            ? 'Full picture layout · drag the reel preview to position it.'
+            : 'Drag the source frame or reel preview to set a position.'}
+        </span>
         <span className="original-audio">
           {clip?.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
           {clip?.muted ? 'Audio muted' : 'Original audio'}
@@ -553,7 +644,8 @@ function JobCard({
         <div className="job-name">
           <strong title={job.clip.name}>{job.clip.name}</strong>
           <span>
-            {durationLabel(job.clip.end - job.clip.start)} <span>·</span> {statusLabels[job.status]}{' '}
+            {durationLabel(job.clip.end - job.clip.start)} <span>·</span>{' '}
+            {resolveFraming(job.clip.framing).aspectRatio} <span>·</span> {statusLabels[job.status]}{' '}
             {job.status === 'running' ? `${Math.round(job.progress * 100)}%` : ''}
           </span>
         </div>
@@ -618,6 +710,7 @@ function JobCard({
 }
 
 export function App() {
+  const [inspectorTab, setInspectorTab] = useState<'framing' | 'shot'>('framing')
   const [showHighlights, setShowHighlights] = useState(false),
     [highlightScan, setHighlightScan] = useState<HighlightScan | null>(null)
   const [project, setProject] = useState<Project | null>(null),
@@ -645,6 +738,12 @@ export function App() {
   const previewUntil = useRef<number | null>(null)
   currentProject.current = project
   const active = project?.clips.find((clip) => clip.id === activeId)
+  const framing = resolveFraming(active ? active.framing : project?.framing)
+  const frameKeys = active?.keyframes || draftKeys
+  const framePosition = frameKeys.length
+    ? positionAt(frameKeys, time)
+    : { x: framing.positionX, y: framing.positionY }
+  const dimensions = outputSize(framing)
   const notify = useCallback((text: string, error = true) => setMessage({ text, error }), [])
   useEffect(() => {
     if (!message) return
@@ -659,6 +758,7 @@ export function App() {
     const sequence = ++loadSequence.current
     setProject(next)
     setActiveId(undefined)
+    setInspectorTab('framing')
     setChecked(new Set(next.clips.map((clip) => clip.id)))
     setRange({ start: 0, end: Math.min(15, next.media.duration) })
     setTime(0)
@@ -772,6 +872,7 @@ export function App() {
       )
       setChecked((previous) => new Set([...previous, clip.id]))
       setActiveId(clip.id)
+      setInspectorTab('shot')
       seek(clip.start)
       notify('Suggestion added. Fine-tune its trim and framing in Shot settings.', false)
     } catch (error) {
@@ -801,6 +902,7 @@ export function App() {
   const selectClip = useCallback(
     (clip: Clip) => {
       setActiveId(clip.id)
+      setInspectorTab('shot')
       seek(clip.start)
     },
     [seek]
@@ -829,12 +931,22 @@ export function App() {
       name: `Shot ${String(project.clips.length + 1).padStart(2, '0')}`,
       ...range,
       muted: false,
+      framing: resolveFraming(project.framing),
       keyframes: draftKeys.length
         ? structuredClone(draftKeys)
-        : [{ id: crypto.randomUUID(), time: range.start, x: 0.5, y: 0.5 }]
+        : [
+            {
+              id: crypto.randomUUID(),
+              time: range.start,
+              x: project.framing?.positionX ?? 0.5,
+              y: project.framing?.positionY ?? 0.5
+            }
+          ]
     }
     setProject({ ...project, clips: [...project.clips, clip] })
+    setDraftKeys([])
     setActiveId(clip.id)
+    setInspectorTab('shot')
     setChecked((previous) => new Set([...previous, clip.id]))
     notify(`${clip.name} added to your shots.`, false)
   }, [project, range, draftKeys, notify])
@@ -863,7 +975,7 @@ export function App() {
       if (
         help ||
         (event.target as HTMLElement)?.closest(
-          'input, textarea, select, [contenteditable="true"], [data-highlight-panel]'
+          'input, textarea, select, [contenteditable="true"], [data-highlight-panel], [data-framing-controls]'
         ) ||
         event.ctrlKey ||
         event.metaKey ||
@@ -915,7 +1027,51 @@ export function App() {
       return
     }
     if (active) updateClip(active.id, { keyframes: keyframes.sort((a, b) => a.time - b.time) })
-    else setDraftKeys(keyframes.sort((a, b) => a.time - b.time))
+    else {
+      setDraftKeys(keyframes.sort((a, b) => a.time - b.time))
+      setProject((previous) =>
+        previous
+          ? {
+              ...previous,
+              framing: {
+                ...resolveFraming(previous.framing),
+                positionX: position.x,
+                positionY: position.y
+              }
+            }
+          : previous
+      )
+    }
+  }
+  function changeFraming(patch: Partial<FramingSettings>) {
+    if (active) updateClip(active.id, { framing: { ...framing, ...patch } })
+    else
+      setProject((previous) =>
+        previous
+          ? { ...previous, framing: { ...resolveFraming(previous.framing), ...patch } }
+          : previous
+      )
+  }
+  function useFramingDefault(applyAll = false) {
+    const next = { ...framing, positionX: framePosition.x, positionY: framePosition.y }
+    setDraftKeys([])
+    setProject((previous) =>
+      previous
+        ? {
+            ...previous,
+            framing: next,
+            clips: applyAll
+              ? previous.clips.map((clip) => ({ ...clip, framing: { ...next } }))
+              : previous.clips
+          }
+        : previous
+    )
+    notify(
+      applyAll
+        ? 'Layout applied to all shots. Queue them again to use changes in existing exports.'
+        : 'Layout saved for new shots.',
+      false
+    )
   }
   function changeTrim(axis: 'start' | 'end', value: number) {
     if (!project || !active) return
@@ -1061,7 +1217,7 @@ export function App() {
         <aside className="library-sidebar">
           <div className="library-heading">
             <span className="section-kicker">YOUR WORKSPACE</span>
-            <span className="version-label">v1.1</span>
+            <span className="version-label">v1.2</span>
           </div>
           <div className="project-selector">
             <div className="project-folder">
@@ -1182,7 +1338,8 @@ export function App() {
                             {durationLabel(clip.end - clip.start)}
                           </span>
                           <span className="shot-format">
-                            9:16 <span>•</span> {clip.keyframes.length} crop{' '}
+                            {resolveFraming(clip.framing).aspectRatio} <span>•</span>{' '}
+                            {clip.keyframes.length} crop{' '}
                             {clip.keyframes.length === 1 ? 'position' : 'positions'}{' '}
                             {clip.muted && <VolumeX size={10} />}
                           </span>
@@ -1287,6 +1444,9 @@ export function App() {
                     draftKeys={draftKeys}
                     videoRef={video}
                     currentTime={time}
+                    framing={framing}
+                    onFraming={changeFraming}
+                    onCustomize={() => setInspectorTab('framing')}
                     onTime={updatePlayhead}
                     onCrop={setCrop}
                     notify={notify}
@@ -1484,11 +1644,45 @@ export function App() {
             <div className="panel-heading">
               <div>
                 <Crop size={15} />
-                <h3>Shot settings</h3>
+                <h3>{inspectorTab === 'framing' ? 'Frame layout' : 'Shot settings'}</h3>
               </div>
-              <span className="subtle-badge">9:16</span>
+              <span className="subtle-badge">{framing.aspectRatio}</span>
             </div>
-            {active && project ? (
+            {project && (
+              <div
+                className="inspector-tabs"
+                role="tablist"
+                aria-label="Shot controls"
+                data-framing-controls
+              >
+                <button
+                  role="tab"
+                  aria-selected={inspectorTab === 'framing'}
+                  onClick={() => setInspectorTab('framing')}
+                >
+                  Framing
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={inspectorTab === 'shot'}
+                  onClick={() => setInspectorTab('shot')}
+                >
+                  Timing & audio
+                </button>
+              </div>
+            )}
+            {inspectorTab === 'framing' && project ? (
+              <FramingControls
+                value={framing}
+                position={framePosition}
+                onChange={changeFraming}
+                onPosition={(position) => setCrop(position, time)}
+                onUseDefault={() => useFramingDefault()}
+                onApplyAll={() => useFramingDefault(true)}
+                shotCount={project.clips.length}
+                selected={!!active}
+              />
+            ) : active && project ? (
               <>
                 <label className="field-label">
                   SHOT NAME
@@ -1536,7 +1730,7 @@ export function App() {
                     className="icon-button"
                     title="Add crop keyframe at playhead"
                     aria-label="Add crop position"
-                    onClick={() => setCrop(positionAt(active.keyframes, time), time)}
+                    onClick={() => setCrop(framePosition, time)}
                   >
                     <Plus size={14} />
                   </button>
@@ -1667,9 +1861,9 @@ export function App() {
                 <Frame size={18} />
               </div>
               <div>
-                <strong>Vertical reel</strong>
+                <strong>{dimensions.name}</strong>
                 <span>
-                  1080 × 1920 <span>·</span> MP4 / H.264
+                  {dimensions.width} × {dimensions.height} <span>·</span> MP4 / H.264
                 </span>
               </div>
               <span className="preset-badge">HD</span>

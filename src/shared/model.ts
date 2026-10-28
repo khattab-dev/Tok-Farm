@@ -2,6 +2,16 @@ import { z } from 'zod'
 import type { HighlightScan, ScanOptions } from './highlights'
 
 const finite = z.number().finite()
+export const FramingSchema = z.object({
+  aspectRatio: z.enum(['9:16', '4:5', '1:1', '16:9']),
+  mode: z.enum(['fill', 'fit']),
+  zoom: finite.min(0.25).max(3),
+  background: z.enum(['blur', 'color']),
+  backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  blur: finite.min(4).max(60),
+  positionX: finite.min(0).max(1),
+  positionY: finite.min(0).max(1)
+})
 export const KeyframeSchema = z.object({
   id: z.string().uuid(),
   time: finite.nonnegative(),
@@ -15,7 +25,8 @@ export const ClipSchema = z
     start: finite.nonnegative(),
     end: finite.positive(),
     muted: z.boolean(),
-    keyframes: z.array(KeyframeSchema).max(200)
+    keyframes: z.array(KeyframeSchema).max(200),
+    framing: FramingSchema.optional()
   })
   .refine((c) => c.end > c.start, 'End must be after start')
 export const MediaSchema = z.object({
@@ -41,7 +52,8 @@ export const ProjectSchema = z
     updatedAt: finite,
     media: MediaSchema,
     clips: z.array(ClipSchema).max(1000),
-    outputDirectory: z.string()
+    outputDirectory: z.string(),
+    framing: FramingSchema.optional()
   })
   .refine(
     (p) => p.clips.every((c) => c.end <= p.media.duration + 0.001),
