@@ -1,0 +1,73 @@
+{
+  "general": {
+    "name": "General",
+    "events": [
+      {
+        "label": "Action candidate",
+        "text": "a video frame of an exciting dramatic action scene with a lot of movement"
+      },
+      {
+        "label": "Celebration candidate",
+        "text": "a video frame of people celebrating an exciting victory with raised arms"
+      },
+      {
+        "label": "Reaction candidate",
+        "text": "a video frame of a surprising emotional reaction or an exciting dramatic moment"
+      }
+    ],
+    "background": [
+      "a video frame of an ordinary quiet scene with little action",
+      "a blank dark screen or an advertisement or a loading screen"
+    ]
+  },
+  "football": {
+    "name": "Football",
+    "events": [
+      {
+        "label": "Celebration candidate",
+        "text": "a soccer broadcast showing football players celebrating a goal together with arms raised"
+      },
+      {
+        "label": "Goalkeeper action",
+        "text": "a soccer broadcast showing a goalkeeper diving to save a shot near the goal"
+      },
+      {
+        "label": "Chance candidate",
+        "text": "a soccer broadcast showing a player shooting the ball toward the goal in the penalty area"
+      },
+      {
+        "label": "Replay candidate",
+        "text": "a soccer broadcast showing a close up replay of an exciting shot at goal"
+      }
+    ],
+    "background": [
+      "a wide view of a soccer field with players passing the ball calmly in midfield",
+      "a soccer broadcast showing an interview a scoreboard advertisement or the crowd sitting quietly"
+    ]
+  },
+  "gaming": {
+    "name": "Gaming",
+    "events": [
+      {
+        "label": "Combat candidate",
+        "text": "a video game screenshot of intense combat gunfire an explosion and fast action"
+      },
+      {
+        "label": "Victory candidate",
+        "text": "a video game victory screen celebrating a win or a completed level"
+      },
+      {
+        "label": "Clutch candidate",
+        "text": "a video game screenshot of a dramatic fight with enemies or an exciting difficult challenge"
+      },
+      {
+        "label": "Racing candidate",
+        "text": "a racing video game screenshot showing a dramatic crash or cars overtaking at high speed"
+      }
+    ],
+    "background": [
+      "a video game main menu settings screen inventory or loading screen",
+      "a video game screenshot of a character standing still in an empty quiet area"
+    ]
+  }
+}

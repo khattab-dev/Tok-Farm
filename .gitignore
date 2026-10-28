@@ -6,3 +6,5 @@ test-results/
 .DS_Store
 *.log
 build/video-tools/
+build/analysis-runtime/
+build/model-cache/

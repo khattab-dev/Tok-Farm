@@ -8,6 +8,8 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { Store } from './storage'
 import { ExportQueue } from './queue'
+import { HighlightScanner } from './highlight-scanner'
+import { ScanOptionsSchema } from '../shared/highlights'
 import { assertSource, generateProxy, generateThumbnails, probeMedia } from './media'
 import { ProjectSchema, type AppEvent, type Project } from '../shared/model'
 
@@ -31,6 +33,7 @@ if (!gotLock) app.quit()
 let window: BrowserWindow | null = null
 let store: Store
 let queue: ExportQueue
+let scanner: HighlightScanner
 let closing = false
 const mediaGrants = new Map<string, string>()
 const proxyTasks = new Map<string, AbortController>()
@@ -132,7 +135,7 @@ const summaries = () =>
     }))
 async function pickVideo() {
   const result = await dialog.showOpenDialog(window!, {
-    title: 'Open match video',
+    title: 'Open video',
     properties: ['openFile'],
     filters: [{ name: 'Video files', extensions: ['mp4', 'mov', 'mkv'] }]
   })
@@ -180,6 +183,8 @@ function setupHandlers(cache: string) {
       throw new Error(
         'Choose the same source video. Its dimensions and duration must match the original.'
       )
+    await scanner.cancel(project.id)
+    store.scans = store.scans.filter((scan) => scan.projectId !== project.id)
     project.media = media
     project.updatedAt = Date.now()
     for (const job of store.queue.jobs) {
@@ -232,6 +237,17 @@ function setupHandlers(cache: string) {
   handle('cancel-proxy', (input: unknown) => {
     proxyTasks.get(idSchema.parse(input))?.abort()
   })
+  handle('get-highlight-scan', (input: unknown) => scanner.get(idSchema.parse(input)))
+  handle('start-highlight-scan', (input: unknown, options: unknown) =>
+    scanner.start(idSchema.parse(input), ScanOptionsSchema.parse(options))
+  )
+  handle('cancel-highlight-scan', (input: unknown) => scanner.cancel(idSchema.parse(input)))
+  handle('accept-highlight', (project: unknown, id: unknown) =>
+    scanner.accept(ProjectSchema.parse(project), idSchema.parse(id))
+  )
+  handle('dismiss-highlight', (projectId: unknown, id: unknown) =>
+    scanner.dismiss(idSchema.parse(projectId), idSchema.parse(id))
+  )
   handle('enqueue', async (input: unknown, ids: unknown) => {
     const project = ProjectSchema.parse(input)
     await store.saveProject(project)
@@ -298,6 +314,7 @@ async function createWindow() {
       }
       closing = true
       for (const controller of proxyTasks.values()) controller.abort()
+      await scanner.shutdown()
       await queue.shutdown()
       app.quit()
     })().catch((error) => {
@@ -331,6 +348,7 @@ if (gotLock)
       const cache = join(app.getPath('userData'), 'media-cache')
       await mkdir(cache, { recursive: true })
       queue = new ExportQueue(store, (value) => emit({ type: 'queue', queue: value }))
+      scanner = new HighlightScanner(store, cache, (scan) => emit({ type: 'highlight-scan', scan }))
       protocol.handle('tokfarm-media', mediaResponse)
       const rendererRoot = resolve(__dirname, '../renderer')
       protocol.handle('tokfarm', (request) => {

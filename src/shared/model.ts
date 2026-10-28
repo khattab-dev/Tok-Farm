@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { HighlightScan, ScanOptions } from './highlights'
 
 const finite = z.number().finite()
 export const KeyframeSchema = z.object({
@@ -80,6 +81,7 @@ export interface Thumbnail {
 export type AppEvent =
   | { type: 'queue'; queue: QueueState }
   | { type: 'proxy-progress'; projectId: string; progress: number }
+  | { type: 'highlight-scan'; scan: HighlightScan }
 export interface TokFarmAPI {
   bootstrap(): Promise<{ projects: ProjectSummary[]; project: Project | null; queue: QueueState }>
   importVideo(path?: string): Promise<Project | null>
@@ -91,6 +93,11 @@ export interface TokFarmAPI {
   thumbnails(projectId: string): Promise<Thumbnail[]>
   createProxy(projectId: string): Promise<string>
   cancelProxy(projectId: string): Promise<void>
+  getHighlightScan(projectId: string): Promise<HighlightScan | null>
+  startHighlightScan(projectId: string, options: ScanOptions): Promise<HighlightScan>
+  cancelHighlightScan(projectId: string): Promise<void>
+  acceptHighlight(project: Project, suggestionId: string): Promise<Clip>
+  dismissHighlight(projectId: string, suggestionId: string): Promise<HighlightScan>
   enqueue(project: Project, clipIds: string[]): Promise<QueueState>
   queueAction(
     action: 'start' | 'pause' | 'cancel' | 'retry' | 'up' | 'down' | 'clear',

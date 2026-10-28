@@ -1,6 +1,6 @@
 {
   "name": "tok-farm",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Turn long match videos into vertical reels.",
   "author": "Tok Farm",
@@ -8,20 +8,23 @@
   "main": "./out/main/index.js",
   "scripts": {
     "prepare:tools": "node scripts/prepare-tools.cjs",
-    "dev": "pnpm prepare:tools && electron-vite dev",
-    "build": "pnpm prepare:tools && pnpm typecheck && electron-vite build",
+    "prepare:analysis": "node scripts/prepare-analysis.cjs",
+    "dev": "pnpm prepare:tools && pnpm prepare:analysis && electron-vite dev",
+    "build": "pnpm prepare:tools && pnpm prepare:analysis && pnpm typecheck && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "pnpm prepare:tools && vitest run",
+    "test": "pnpm prepare:tools && pnpm prepare:analysis && vitest run",
     "test:media": "pnpm prepare:tools && vitest run tests/media.test.ts",
     "test:e2e": "pnpm build && tsx tests/acceptance.ts",
+    "test:highlights:e2e": "pnpm build && tsx tests/highlight-acceptance.ts",
     "package": "pnpm build && electron-builder --win nsis --x64",
     "package:dir": "pnpm build && electron-builder --win dir --x64"
   },
   "devDependencies": {
     "@derhuerst/ffprobe-static": "5.3.0",
+    "@huggingface/tokenizers": "0.2.0",
     "@playwright/test": "^1.58.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
@@ -32,6 +35,7 @@
     "electron-vite": "6.0.0",
     "ffmpeg-static": "5.3.0",
     "lucide-react": "^0.577.0",
+    "onnxruntime-node": "1.22.0",
     "prettier": "^3.9.10",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -52,6 +56,24 @@
       "package.json"
     ],
     "extraResources": [
+      {
+        "from": "build/analysis-runtime",
+        "to": "analysis-runtime"
+      },
+      {
+        "from": "build/analysis-runtime/node_modules/onnxruntime-node",
+        "to": "analysis-runtime/node_modules/onnxruntime-node",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/analysis-runtime/node_modules/onnxruntime-common",
+        "to": "analysis-runtime/node_modules/onnxruntime-common",
+        "filter": [
+          "**/*"
+        ]
+      },
       {
         "from": "THIRD_PARTY_NOTICES.md",
         "to": "THIRD_PARTY_NOTICES.md"

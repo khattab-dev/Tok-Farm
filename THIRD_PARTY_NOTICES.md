@@ -21,6 +21,14 @@ Electron is MIT licensed: https://github.com/electron/electron/blob/main/LICENSE
 
 Electron includes Chromium, Node.js, and other components. Electron's `LICENSE` and `LICENSES.chromium.html` are included in the installation directory.
 
+## Local visual analysis
+
+- CLIP ViT-B/32, developed by OpenAI, with quantized ONNX weights converted by Xenova: https://huggingface.co/Xenova/clip-vit-base-patch32
+- Model revision: `4c1807b705b1d015fb032789cc4d221b23025a6f`. The original MIT license is included as `resources/analysis-runtime/CLIP-LICENSE.txt`. Original source and model documentation: https://github.com/openai/CLIP
+- ONNX Runtime 1.22.0 by Microsoft, MIT licensed: https://github.com/microsoft/onnxruntime/tree/v1.22.0. Its license and third-party notices accompany the native runtime in `resources/analysis-runtime/`.
+- The packaged application includes the quantized vision encoder, locally prepared text vectors for the supported profiles, and the Windows CPU inference runtime. No hosted inference service is used. `MODEL-PROVENANCE.json` records the pinned source, vision weight checksum, and profile checksum.
+- Hugging Face Tokenizers.js 0.2.0 is used only during model preparation and is not part of the runtime application: https://github.com/huggingface/tokenizers.js (Apache-2.0).
+
 ## Application dependencies
 
 - React / React DOM: MIT, https://github.com/facebook/react

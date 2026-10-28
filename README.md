@@ -1,6 +1,6 @@
 # Tok Farm
 
-A local Windows desktop editor that turns long match videos into separate vertical reels. Built with Electron, React, TypeScript, and FFmpeg.
+A local Windows desktop editor that turns long videos into separate vertical reels. Includes offline highlight suggestions for general footage, football, and gaming. Built with Electron, React, TypeScript, FFmpeg, and ONNX Runtime.
 
 ## Run the app
 
@@ -12,7 +12,23 @@ pnpm exec install-electron
 pnpm dev
 ```
 
-The first install downloads FFmpeg, FFprobe, and the Electron runtime. The packaged app runs offline and does not need Node.js or a separate FFmpeg installation.
+The first install downloads FFmpeg, FFprobe, and the Electron runtime. The first build or `pnpm prepare:analysis` also downloads the pinned CLIP vision model and a text model used to prepare its profile vectors (about 155 MB in total). Only the vision model, prepared vectors, and CPU inference runtime ship with the application. The packaged app runs offline and does not need Python, Node.js, a model server, an API key, or a separate FFmpeg installation.
+
+## Find suggested highlights
+
+1. Import a video and click **Find highlights**.
+2. Choose **General**, **Football**, or **Gaming**, then select a sensitivity and maximum result count.
+3. Click **Scan this video**. The app samples the full video every two seconds and ranks visual matches, visual activity, transitions, and optional relative audio-energy peaks. The entire video and all inference remain on your computer.
+4. Preview each suggested range. Click **Add shot** to turn it into a regular editable shot, or dismiss it.
+5. Return to **Your shots**, adjust timing and framing, and use the existing export queue.
+
+Sound is optional. There is no speech recognition and no commentary-language requirement. Scanning, preview conversion, and exports run without uploading footage or audio. The packaged model is already installed; scanning does not download models or contact a cloud inference provider.
+
+Suggestions are experimental review candidates, **not verified goals, saves, or victories**. CLIP matches sampled images to fixed descriptions; it does not understand every play or game mechanic, and two-second sampling can miss brief events. The Football profile proposes celebration, goalkeeper, chance, and replay scenes. The Gaming profile proposes combat, victory, clutch, and racing scenes. The interest score ranks combined signals and is not an event probability. All suggestions require review.
+
+The scanner includes up to ten seconds before and after a candidate moment, avoids nearby duplicates, and suppresses static frames and steady loudness. Accepted results become normal shots and are never exported automatically. A scan can return no candidates. Try **More moments** or another profile, or mark shots manually.
+
+One scan runs at a time in a separate helper process, so cancellation or a native-model error cannot terminate the editor. You can keep editing and exporting. Results and review decisions persist separately from editor autosaves; interrupted scans can be restarted. Visual/audio feature caches make repeat scans of the same source/profile faster and are invalidated when source metadata or model profiles change. Existing version 1.0 libraries remain readable.
 
 ## Make a reel
 
@@ -44,12 +60,15 @@ Space plays/pauses. Left/right seeks by one nominal source-frame interval; Shift
 pnpm typecheck
 pnpm test
 pnpm test:e2e
+pnpm test:highlights:e2e
 pnpm package
 ```
 
 `pnpm test` runs domain/queue tests and real FFmpeg integration tests, including moving crop pixels, audio sync, 50/60 fps, rotated media, silence, cancellation, Unicode paths, and filename collisions.
 
 `pnpm test:e2e` generates a synthetic 45-minute 1080p/30 fps match fixture, opens the real desktop app with Playwright, marks ten shots through the UI, drags crop positions, mutes a shot, exports ten reels while editing, verifies outputs, and reopens the saved project. Screenshots and results go to `test-results/`. The fixture loops a synthetic two-second pitch scene; it verifies long-duration navigation and the complete workflow, rather than decoder performance on every real broadcast format.
+
+`pnpm test:highlights:e2e` scans a silent activity fixture through the real UI, previews and approves a suggestion, dismisses another, exports the approved shot, checks persistence, and cancels a second scan during model startup. Unit/integration tests also exercise the actual bundled vision model, all three profiles, cache reuse, source changes, and scan lifecycle recovery. These fixtures verify the pipeline, not goal/save detection accuracy on real matches.
 
 To run the same acceptance workflow against an installed executable:
 
@@ -63,6 +82,8 @@ The installer is generated in `release/`. It is unsigned; public distribution wo
 ## Architecture
 
 - `src/main`: validated file/queue IPC, ranged local-media streaming, probing, preview generation, atomic storage, and a sequential FFmpeg queue.
+- `src/main/highlight-engine.ts` and `highlight-scanner.ts`: streaming frame/audio sampling, isolated local inference, candidate ranking, cancellation, and persisted review state.
+- `scripts/prepare-analysis.cjs` and `vision-worker.cjs`: pinned model preparation and the inference helper. Model provenance and licenses ship in `resources/analysis-runtime/`.
 - `src/preload`: the narrow typed bridge. Renderers have no Node.js access and run sandboxed with context isolation.
 - `src/renderer`: the editor workspace. A single source video supplies both the source monitor and canvas-based reel preview.
 - `src/shared`: validated project/clip models and shared crop interpolation/filter expressions.

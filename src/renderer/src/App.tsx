@@ -29,6 +29,7 @@ import {
   Plus,
   RotateCcw,
   Scissors,
+  ScanSearch,
   SkipBack,
   SkipForward,
   Sparkles,
@@ -48,6 +49,8 @@ import type {
   QueueState,
   Thumbnail
 } from '../../shared/model'
+import type { HighlightScan, HighlightSuggestion, ScanOptions } from '../../shared/highlights'
+import { HighlightPanel } from './HighlightPanel'
 import { cropGeometry, parseTimecode, positionAt, timecode } from '../../shared/crop'
 
 const api = window.tokfarm
@@ -412,7 +415,7 @@ function Timeline({
       <div className="panel-heading">
         <div>
           <Film size={15} />
-          <h3>Match timeline</h3>
+          <h3>Video timeline</h3>
           <span className="muted">{clips.length} shots marked</span>
         </div>
         <div className="zoom-controls">
@@ -615,6 +618,8 @@ function JobCard({
 }
 
 export function App() {
+  const [showHighlights, setShowHighlights] = useState(false),
+    [highlightScan, setHighlightScan] = useState<HighlightScan | null>(null)
   const [project, setProject] = useState<Project | null>(null),
     [projects, setProjects] = useState<ProjectSummary[]>([])
   const [queue, setQueue] = useState<QueueState>({ version: 1, running: false, jobs: [] })
@@ -637,6 +642,7 @@ export function App() {
     currentProject = useRef(project),
     saveSequence = useRef(0),
     loadSequence = useRef(0)
+  const previewUntil = useRef<number | null>(null)
   currentProject.current = project
   const active = project?.clips.find((clip) => clip.id === activeId)
   const notify = useCallback((text: string, error = true) => setMessage({ text, error }), [])
@@ -662,6 +668,13 @@ export function App() {
     setSourceError('')
     setMediaError(false)
     setProxyProgress(null)
+    setHighlightScan(null)
+    void api
+      .getHighlightScan(next.id)
+      .then((scan) => {
+        if (sequence === loadSequence.current) setHighlightScan(scan)
+      })
+      .catch(console.warn)
     try {
       const mediaUrl = await api.mediaUrl(next.id)
       if (sequence === loadSequence.current) setUrl(mediaUrl)
@@ -688,7 +701,13 @@ export function App() {
       .catch(report)
     return api.onEvent((event) => {
       if (event.type === 'queue') setQueue(event.queue)
-      else if (event.projectId === currentProject.current?.id) setProxyProgress(event.progress)
+      else if (event.type === 'proxy-progress' && event.projectId === currentProject.current?.id)
+        setProxyProgress(event.progress)
+      else if (
+        event.type === 'highlight-scan' &&
+        event.scan.projectId === currentProject.current?.id
+      )
+        setHighlightScan(event.scan)
     })
   }, [loadProject, report])
   useEffect(() => {
@@ -717,9 +736,56 @@ export function App() {
   }, [project, report])
 
   const seek = useCallback((next: number) => {
+    previewUntil.current = null
     setTime(next)
     if (video.current) video.current.currentTime = next
   }, [])
+  const updatePlayhead = useCallback((value: number) => {
+    setTime(value)
+    if (previewUntil.current !== null && value >= previewUntil.current) {
+      video.current?.pause()
+      previewUntil.current = null
+    }
+  }, [])
+  async function startHighlightScan(options: ScanOptions) {
+    if (!project) return
+    try {
+      setHighlightScan(await api.startHighlightScan(project.id, options))
+    } catch (error) {
+      report(error)
+    }
+  }
+  async function acceptHighlight(suggestion: HighlightSuggestion) {
+    if (!project) return
+    try {
+      const clip = await api.acceptHighlight(project, suggestion.id)
+      if (currentProject.current?.id !== project.id) return
+      setProject((previous) =>
+        previous?.id === project.id
+          ? {
+              ...previous,
+              clips: previous.clips.some((item) => item.id === clip.id)
+                ? previous.clips
+                : [...previous.clips, clip]
+            }
+          : previous
+      )
+      setChecked((previous) => new Set([...previous, clip.id]))
+      setActiveId(clip.id)
+      seek(clip.start)
+      notify('Suggestion added. Fine-tune its trim and framing in Shot settings.', false)
+    } catch (error) {
+      report(error)
+    }
+  }
+  function previewHighlight(suggestion: HighlightSuggestion) {
+    setActiveId(undefined)
+    setDraftKeys([])
+    setRange({ start: suggestion.start, end: suggestion.end })
+    seek(suggestion.start)
+    previewUntil.current = suggestion.end
+    void video.current?.play().catch(report)
+  }
   const updateClip = useCallback(
     (id: string, update: Partial<Clip>) =>
       setProject((previous) =>
@@ -797,7 +863,7 @@ export function App() {
       if (
         help ||
         (event.target as HTMLElement)?.closest(
-          'input, textarea, select, [contenteditable="true"]'
+          'input, textarea, select, [contenteditable="true"], [data-highlight-panel]'
         ) ||
         event.ctrlKey ||
         event.metaKey ||
@@ -816,6 +882,7 @@ export function App() {
         event.preventDefault()
         markOut()
       } else if (event.key === 'Enter') {
+        if ((event.target as HTMLElement)?.closest('button')) return
         event.preventDefault()
         addShot()
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
@@ -959,11 +1026,19 @@ export function App() {
       <header className="app-header">
         <Logo />
         <span className="header-divider" />
-        <span className="app-tagline">Long matches. Great moments.</span>
+        <span className="app-tagline">Long videos. Great moments.</span>
         <div className="header-actions">
           <span className="local-label">
             <span className="green-dot" /> LOCAL WORKSPACE
           </span>
+          <button
+            className={`secondary-button scan-launch-button ${showHighlights ? 'selected' : ''}`}
+            disabled={!project}
+            onClick={() => setShowHighlights(!showHighlights)}
+          >
+            <ScanSearch size={14} /> Find highlights{' '}
+            {highlightScan?.status === 'running' && <LoaderCircle size={12} className="spin" />}
+          </button>
           <button
             className="icon-button help-button"
             title="Keyboard shortcuts"
@@ -986,7 +1061,7 @@ export function App() {
         <aside className="library-sidebar">
           <div className="library-heading">
             <span className="section-kicker">YOUR WORKSPACE</span>
-            <span className="version-label">v1.0</span>
+            <span className="version-label">v1.1</span>
           </div>
           <div className="project-selector">
             <div className="project-folder">
@@ -1011,137 +1086,165 @@ export function App() {
             </div>
             <ChevronDown size={13} />
           </div>
-          <div className="shots-heading">
-            <h2>
-              <Scissors size={16} /> Your shots <span>{project?.clips.length || 0}</span>
-            </h2>
-            <button
-              className="icon-button"
-              title="New selection"
-              disabled={!project}
-              onClick={() => {
-                setActiveId(undefined)
-                setDraftKeys([])
-                setRange({
-                  start: Math.min(time, (project?.media.duration || 1) - 0.01),
-                  end: Math.min(time + 15, project?.media.duration || 15)
-                })
+          {showHighlights && project ? (
+            <HighlightPanel
+              key={project.id}
+              scan={highlightScan}
+              onStart={startHighlightScan}
+              onCancel={async () => {
+                try {
+                  await api.cancelHighlightScan(project.id)
+                } catch (error) {
+                  report(error)
+                }
               }}
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-          <p className="sidebar-description">Little moments. Ready for the feed.</p>
-          <div className="shot-list">
-            {project?.clips.length ? (
-              project.clips.map((clip, index) => (
-                <div
-                  key={clip.id}
-                  className={`shot-card ${activeId === clip.id ? 'selected' : ''}`}
-                  data-testid="shot-card"
+              onPreview={previewHighlight}
+              onAccept={acceptHighlight}
+              onDismiss={async (id) => {
+                try {
+                  await api.dismissHighlight(project.id, id)
+                } catch (error) {
+                  report(error)
+                }
+              }}
+              onBack={() => setShowHighlights(false)}
+            />
+          ) : (
+            <>
+              <div className="shots-heading">
+                <h2>
+                  <Scissors size={16} /> Your shots <span>{project?.clips.length || 0}</span>
+                </h2>
+                <button
+                  className="icon-button"
+                  title="New selection"
+                  disabled={!project}
+                  onClick={() => {
+                    setActiveId(undefined)
+                    setDraftKeys([])
+                    setRange({
+                      start: Math.min(time, (project?.media.duration || 1) - 0.01),
+                      end: Math.min(time + 15, project?.media.duration || 15)
+                    })
+                  }}
                 >
-                  <input
-                    type="checkbox"
-                    className="shot-checkbox"
-                    aria-label={`Select ${clip.name} for export`}
-                    checked={checked.has(clip.id)}
-                    onChange={(event) =>
-                      setChecked((previous) => {
-                        const next = new Set(previous)
-                        if (event.target.checked) next.add(clip.id)
-                        else next.delete(clip.id)
-                        return next
-                      })
-                    }
-                  />
-                  <button className="shot-select" onClick={() => selectClip(clip)}>
-                    <div className="shot-thumbnail">
-                      {thumbnails.length ? (
-                        <img
-                          src={
-                            thumbnails[
-                              Math.min(
-                                thumbnails.length - 1,
-                                Math.floor(
-                                  (clip.start / project.media.duration) * thumbnails.length
-                                )
-                              )
-                            ].url
-                          }
-                          alt=""
-                        />
-                      ) : (
-                        <Film size={18} />
-                      )}
-                      <span>{String(index + 1).padStart(2, '0')}</span>
+                  <Plus size={16} />
+                </button>
+              </div>
+              <p className="sidebar-description">Little moments. Ready for the feed.</p>
+              <div className="shot-list">
+                {project?.clips.length ? (
+                  project.clips.map((clip, index) => (
+                    <div
+                      key={clip.id}
+                      className={`shot-card ${activeId === clip.id ? 'selected' : ''}`}
+                      data-testid="shot-card"
+                    >
+                      <input
+                        type="checkbox"
+                        className="shot-checkbox"
+                        aria-label={`Select ${clip.name} for export`}
+                        checked={checked.has(clip.id)}
+                        onChange={(event) =>
+                          setChecked((previous) => {
+                            const next = new Set(previous)
+                            if (event.target.checked) next.add(clip.id)
+                            else next.delete(clip.id)
+                            return next
+                          })
+                        }
+                      />
+                      <button className="shot-select" onClick={() => selectClip(clip)}>
+                        <div className="shot-thumbnail">
+                          {thumbnails.length ? (
+                            <img
+                              src={
+                                thumbnails[
+                                  Math.min(
+                                    thumbnails.length - 1,
+                                    Math.floor(
+                                      (clip.start / project.media.duration) * thumbnails.length
+                                    )
+                                  )
+                                ].url
+                              }
+                              alt=""
+                            />
+                          ) : (
+                            <Film size={18} />
+                          )}
+                          <span>{String(index + 1).padStart(2, '0')}</span>
+                        </div>
+                        <div className="shot-info">
+                          <strong>{clip.name}</strong>
+                          <span>
+                            {timecode(clip.start)} <span>·</span>{' '}
+                            {durationLabel(clip.end - clip.start)}
+                          </span>
+                          <span className="shot-format">
+                            9:16 <span>•</span> {clip.keyframes.length} crop{' '}
+                            {clip.keyframes.length === 1 ? 'position' : 'positions'}{' '}
+                            {clip.muted && <VolumeX size={10} />}
+                          </span>
+                        </div>
+                      </button>
                     </div>
-                    <div className="shot-info">
-                      <strong>{clip.name}</strong>
-                      <span>
-                        {timecode(clip.start)} <span>·</span> {durationLabel(clip.end - clip.start)}
-                      </span>
-                      <span className="shot-format">
-                        9:16 <span>•</span> {clip.keyframes.length} crop{' '}
-                        {clip.keyframes.length === 1 ? 'position' : 'positions'}{' '}
-                        {clip.muted && <VolumeX size={10} />}
-                      </span>
+                  ))
+                ) : (
+                  <div className="empty-shots">
+                    <div className="empty-shot-icon">
+                      <Scissors size={24} />
                     </div>
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="empty-shots">
-                <div className="empty-shot-icon">
-                  <Scissors size={24} />
-                </div>
-                <strong>Your highlights start here</strong>
-                <p>
-                  Mark an in and out point,
-                  <br />
-                  then add your first shot.
-                </p>
-                <div className="key-sequence">
-                  <kbd>I</kbd>
-                  <ChevronRight size={11} />
-                  <kbd>O</kbd>
-                  <ChevronRight size={11} />
-                  <kbd>↵</kbd>
+                    <strong>Your highlights start here</strong>
+                    <p>
+                      Mark an in and out point,
+                      <br />
+                      then add your first shot.
+                    </p>
+                    <div className="key-sequence">
+                      <kbd>I</kbd>
+                      <ChevronRight size={11} />
+                      <kbd>O</kbd>
+                      <ChevronRight size={11} />
+                      <kbd>↵</kbd>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="sidebar-bottom">
+                <button
+                  className="primary-button full-width"
+                  disabled={!project?.clips.length || !checked.size}
+                  onClick={() => void enqueue()}
+                >
+                  <Download size={15} /> Queue selected{' '}
+                  <span className="button-counter">{checked.size}</span>
+                </button>
+                <button
+                  className="text-button full-width"
+                  disabled={!project?.clips.length}
+                  onClick={() => void enqueue(true)}
+                >
+                  Queue all shots <ArrowRight size={13} />
+                </button>
+                <div className="sidebar-tip">
+                  <Sparkles size={13} />
+                  <span>
+                    One shot. One reel.
+                    <br />
+                    Keep the moments coming.
+                  </span>
                 </div>
               </div>
-            )}
-          </div>
-          <div className="sidebar-bottom">
-            <button
-              className="primary-button full-width"
-              disabled={!project?.clips.length || !checked.size}
-              onClick={() => void enqueue()}
-            >
-              <Download size={15} /> Queue selected{' '}
-              <span className="button-counter">{checked.size}</span>
-            </button>
-            <button
-              className="text-button full-width"
-              disabled={!project?.clips.length}
-              onClick={() => void enqueue(true)}
-            >
-              Queue all shots <ArrowRight size={13} />
-            </button>
-            <div className="sidebar-tip">
-              <Sparkles size={13} />
-              <span>
-                One shot. One reel.
-                <br />
-                Keep the moments coming.
-              </span>
-            </div>
-          </div>
+            </>
+          )}
         </aside>
 
         <main className="workspace">
           <div className="workspace-title">
             <div className="breadcrumb">
               WORKSPACE <ChevronRight size={11} />{' '}
-              <span>{project ? 'Match editor' : 'Getting started'}</span>
+              <span>{project ? 'Video editor' : 'Getting started'}</span>
             </div>
             <div className="project-title-row">
               {project ? (
@@ -1184,7 +1287,7 @@ export function App() {
                     draftKeys={draftKeys}
                     videoRef={video}
                     currentTime={time}
-                    onTime={setTime}
+                    onTime={updatePlayhead}
                     onCrop={setCrop}
                     notify={notify}
                     onDecodeError={() => {
@@ -1302,7 +1405,7 @@ export function App() {
               <div className="welcome-panel">
                 <div className="welcome-grid" />
                 <div className="welcome-topline">
-                  <span className="green-dot" /> FROM FULL TIME TO FEED TIME
+                  <span className="green-dot" /> FROM FOOTAGE TO FEED
                 </div>
                 <div className="welcome-graphic">
                   <div className="graphic-landscape">
@@ -1330,12 +1433,12 @@ export function App() {
                   <span className="graphic-arrow">↗</span>
                 </div>
                 <h2>
-                  A whole match.
+                  Your full video.
                   <br />
                   <span>Only the moments that matter.</span>
                 </h2>
                 <p>
-                  Bring your match footage. Pick the action.
+                  Bring your footage. Pick the action.
                   <br />
                   Turn every great play into a reel of its own.
                 </p>
@@ -1345,7 +1448,7 @@ export function App() {
                   disabled={loading}
                 >
                   <Upload size={17} />
-                  {loading ? 'Opening your video…' : 'Choose a match video'}
+                  {loading ? 'Opening your video…' : 'Choose a video'}
                   <ArrowRight size={16} />
                 </button>
                 <span className="drop-hint">

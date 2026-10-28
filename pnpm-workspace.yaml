@@ -1,4 +1,5 @@
 allowBuilds:
+  onnxruntime-node: true
   '@derhuerst/ffprobe-static': true
   electron: true
   electron-winstaller: false

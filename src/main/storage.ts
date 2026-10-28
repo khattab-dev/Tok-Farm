@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { HighlightScanSchema, type HighlightScan } from '../shared/highlights'
 import {
   ClipSchema,
   MediaSchema,
@@ -27,11 +28,13 @@ const JobSchema = z.object({
 const DiskSchema = z.object({
   version: z.literal(1),
   projects: z.array(ProjectSchema),
-  jobs: z.array(JobSchema)
+  jobs: z.array(JobSchema),
+  scans: z.array(HighlightScanSchema).default([])
 })
 
 export class Store {
   projects: Project[] = []
+  scans: HighlightScan[] = []
   queue: QueueState = { version: 1, running: false, jobs: [] }
   private writes: Promise<void> = Promise.resolve()
   readonly file: string
@@ -43,6 +46,15 @@ export class Store {
     try {
       const data = DiskSchema.parse(JSON.parse(await readFile(this.file, 'utf8')))
       this.projects = data.projects
+      this.scans = data.scans.map((scan) =>
+        scan.status === 'running'
+          ? {
+              ...scan,
+              status: 'interrupted',
+              error: 'The app closed during analysis. Start a new scan to continue.'
+            }
+          : scan
+      )
       this.queue.jobs = data.jobs.map((job) =>
         job.status === 'running'
           ? ({
@@ -62,7 +74,7 @@ export class Store {
   }
   persist(): Promise<void> {
     const data = JSON.stringify(
-      { version: 1, projects: this.projects, jobs: this.queue.jobs },
+      { version: 1, projects: this.projects, jobs: this.queue.jobs, scans: this.scans },
       null,
       2
     )
