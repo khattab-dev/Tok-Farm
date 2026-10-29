@@ -5,6 +5,12 @@ export const HighlightProfileSchema = z.enum(['general', 'football', 'gaming'])
 export type HighlightProfile = z.infer<typeof HighlightProfileSchema>
 export const highlightProfiles = profileData
 export const ScanOptionsSchema = z.object({
+  engine: z.enum(['clip', 'qwen']).optional(),
+  query: z.string().trim().max(2000).optional(),
+  range: z
+    .object({ start: z.number().finite().nonnegative(), end: z.number().finite().positive() })
+    .refine((value) => value.end > value.start, 'Scan end must be after start')
+    .optional(),
   profile: HighlightProfileSchema,
   sensitivity: z.enum(['balanced', 'more', 'fewer']).default('balanced'),
   maxSuggestions: z.number().int().min(1).max(50).default(20)
@@ -28,6 +34,7 @@ export const HighlightScanSchema = z.object({
   status: z.enum(['running', 'completed', 'cancelled', 'failed', 'interrupted']),
   phase: z.enum(['preparing', 'audio', 'visual', 'ranking', 'done']),
   progress: z.number().min(0).max(1),
+  detail: z.string().max(500).optional(),
   startedAt: z.number(),
   finishedAt: z.number().optional(),
   error: z.string().optional(),

@@ -177,6 +177,8 @@ async function streamChunks(
 export interface ScanProgress {
   phase: 'preparing' | 'audio' | 'visual' | 'ranking'
   progress: number
+  detail?: string
+  suggestions?: HighlightSuggestion[]
 }
 export async function scanHighlights(
   media: Media,

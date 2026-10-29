@@ -86,6 +86,56 @@
   font-size: 10px;
   min-height: 31px;
 }
+.scan-settings > label + label {
+  margin-top: 10px;
+}
+.scan-settings textarea,
+.scan-settings input {
+  width: 100%;
+  background: #10151c;
+  color: #d3dae3;
+  border: 1px solid #39414d;
+  border-radius: 4px;
+  padding: 7px 5px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.scan-settings textarea {
+  min-height: 78px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.qwen-panel .scan-setting-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.qwen-panel .scan-note,
+.qwen-status {
+  font-size: 9px;
+  line-height: 1.6;
+  letter-spacing: 0;
+  margin: 9px 0;
+}
+.qwen-status {
+  color: #9cc7af;
+}
+.qwen-panel .scan-settings .text-button {
+  font-size: 9px;
+  margin: 0 0 8px;
+}
+.qwen-panel {
+  overflow: auto;
+  padding-right: 3px;
+}
+.qwen-panel .scan-settings,
+.qwen-panel .highlights-heading,
+.qwen-panel .highlight-footer,
+.qwen-panel .suggestion-list {
+  flex-shrink: 0;
+}
+.qwen-panel .suggestion-list {
+  overflow: visible;
+  flex: none;
+}
 .scan-progress {
   padding: 12px 1px;
 }

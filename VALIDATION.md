@@ -1,6 +1,20 @@
-# Tok Farm 1.2.0 — verification
+# Tok Farm 1.3.0 — verification
 
 Verified on Windows x64 on October 29, 2026.
+
+## Version 1.3 Qwen integration
+
+- TypeScript, Prettier, and all **51 automated tests** passed. New pipeline tests cover source-time mapping, bounded review candidates, cache reuse/query invalidation, cancellation with partial results, temporary-file cleanup, missing model packs, and invalid model timestamps. Legacy library settings remain readable.
+- Built the Windows x64 packaged app with the Qwen3-VL-2B-Instruct Q4_K_M model, Q8_0 vision encoder, and llama.cpp b11960 Vulkan/CPU runtimes included in `resources/qwen-runtime/`, together with licenses and pinned provenance.
+- Tested the actual model through the **packaged app's UI** with PATH restricted to Windows system directories. Imported the supplied 1280×720, 30 fps, silent, 6220-second source and scanned 06:30–06:40 with a goal query. It returned one reviewable candidate around the known scoring play. This is a short-range test, not a full-match accuracy test.
+- Edited a manual shot while Qwen was running, previewed and approved its suggestion, exported both shots, validated 1080×1920 output, and reopened the saved project with Qwen options and review status intact. Repeating the same query reused cached results in about 0.1 seconds. Cancelling another query preserved the saved shots and stopped the helper. The compact 1180×800 layout and scan controls were checked. No renderer errors occurred.
+- Re-ran packaged quick-highlight acceptance: scanned the silent activity fixture, approved/dismissed suggestions, exported, reopened review decisions, and cancelled another scan successfully. The default quick scanner remains available.
+- Artifacts: `test-results/packaged-qwen.json`, `test-results/packaged-qwen-settings.png`, `test-results/packaged-qwen-results.png`, `test-results/packaged-qwen-compact.png`, and `test-results/packaged-highlights.json`.
+- Qwen is explicitly experimental. Earlier benchmark tests found false goal matches on a replay/chance even after stricter prompting. It is not an independent event verifier, and its evidence text can be wrong. General gaming/movie accuracy, complete goal recall, and precise landing detection remain unmeasured. See `docs/qwen-benchmark.md` and the local benchmark reports for measurements.
+
+The Qwen model is bundled, so the packaged app needs no separate model setup or model downloads to scan. Developer packaging requires `pnpm prepare:qwen` once before building. A different prepared model folder can be selected in the app and is remembered locally. No system driver changes were made.
+
+## Previous version 1.2 acceptance
 
 - TypeScript, including unused declarations: passed.
 - Prettier formatting check: passed.
@@ -23,8 +37,14 @@ The 45-minute fixture loops a synthetic pitch scene; the silent activity fixture
 
 ## Deliverable
 
-`release/Tok-Farm-1.2.0-Setup.exe`
+Version 1.3 installer: `release/v1.3.0/Tok-Farm-1.3.0-Setup.exe` (1,802,449,468 bytes).
+
+SHA-256: `9FF985237FF293753059401589E0C7D30A59DA60F3C77635F01B931CB5A9E4C8`
+
+Updated portable app: `release/v1.3.0/win-unpacked/Tok Farm.exe` (keep its adjacent files and resources together).
+
+Previous installer: `release/Tok-Farm-1.2.0-Setup.exe`
 
 SHA-256: `878FD4B88BB391264E11462F1A1F652FB527FC4F842EE2C041ED3EFD5841BFA2`
 
-The installer is unsigned. It includes FFmpeg, FFprobe, the quantized CLIP vision model, prepared profile vectors, the Windows ONNX Runtime, and relevant licenses/build information. Source footage is never modified or uploaded.
+The builds are unsigned. Version 1.3 includes FFmpeg, FFprobe, the CLIP model/runtime, the Qwen model/runtime, and relevant licenses/build information. Source footage is never modified or uploaded. The version 1.3 packaged app was exercised directly; the new installer was built but not installed during this change, and no clean virtual machine was used.

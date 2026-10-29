@@ -29,12 +29,14 @@ const DiskSchema = z.object({
   version: z.literal(1),
   projects: z.array(ProjectSchema),
   jobs: z.array(JobSchema),
-  scans: z.array(HighlightScanSchema).default([])
+  scans: z.array(HighlightScanSchema).default([]),
+  settings: z.object({ qwenRoot: z.string().optional() }).default({})
 })
 
 export class Store {
   projects: Project[] = []
   scans: HighlightScan[] = []
+  settings: { qwenRoot?: string } = {}
   queue: QueueState = { version: 1, running: false, jobs: [] }
   private writes: Promise<void> = Promise.resolve()
   readonly file: string
@@ -46,6 +48,7 @@ export class Store {
     try {
       const data = DiskSchema.parse(JSON.parse(await readFile(this.file, 'utf8')))
       this.projects = data.projects
+      this.settings = data.settings
       this.scans = data.scans.map((scan) =>
         scan.status === 'running'
           ? {
@@ -74,7 +77,13 @@ export class Store {
   }
   persist(): Promise<void> {
     const data = JSON.stringify(
-      { version: 1, projects: this.projects, jobs: this.queue.jobs, scans: this.scans },
+      {
+        version: 1,
+        projects: this.projects,
+        jobs: this.queue.jobs,
+        scans: this.scans,
+        settings: this.settings
+      },
       null,
       2
     )

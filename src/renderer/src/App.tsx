@@ -1217,7 +1217,7 @@ export function App() {
         <aside className="library-sidebar">
           <div className="library-heading">
             <span className="section-kicker">YOUR WORKSPACE</span>
-            <span className="version-label">v1.2</span>
+            <span className="version-label">v1.3</span>
           </div>
           <div className="project-selector">
             <div className="project-folder">
@@ -1245,6 +1245,8 @@ export function App() {
           {showHighlights && project ? (
             <HighlightPanel
               key={project.id}
+              duration={project.media.duration}
+              selection={range}
               scan={highlightScan}
               onStart={startHighlightScan}
               onCancel={async () => {

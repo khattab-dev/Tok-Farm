@@ -12,7 +12,7 @@ pnpm exec install-electron
 pnpm dev
 ```
 
-The first install downloads FFmpeg, FFprobe, and the Electron runtime. The first build or `pnpm prepare:analysis` also downloads the pinned CLIP vision model and a text model used to prepare its profile vectors (about 155 MB in total). Only the vision model, prepared vectors, and CPU inference runtime ship with the application. The packaged app runs offline and does not need Python, Node.js, a model server, an API key, or a separate FFmpeg installation.
+The first install downloads FFmpeg, FFprobe, and the Electron runtime. The first build or `pnpm prepare:analysis` also downloads the pinned CLIP vision model and a text model used to prepare its profile vectors (about 155 MB total). Run `pnpm prepare:qwen` once before packaging to prepare Qwen's approximately 1.56 GB model files and Windows Vulkan/CPU helpers. Version 1.3 packages include both engines and run offline without Python, Node.js, a separately installed model server, an API key, or a separate FFmpeg installation.
 
 ## Find suggested highlights
 
@@ -21,6 +21,12 @@ The first install downloads FFmpeg, FFprobe, and the Electron runtime. The first
 3. Click **Scan this video**. The app samples the full video every two seconds and ranks visual matches, visual activity, transitions, and optional relative audio-energy peaks. The entire video and all inference remain on your computer.
 4. Preview each suggested range. Click **Add shot** to turn it into a regular editable shot, or dismiss it.
 5. Return to **Your shots**, adjust timing and framing, and use the existing export queue.
+
+For the experimental general video engine, choose **Analysis engine → Qwen · experimental**. Enter **Describe what to find**, or leave it blank for automatic visual suggestions. Choose **Selected range** and enter start/end video timestamps, or choose **Full video**. **Use current selection** copies your marked range. Start with a short section: a full video can take longer to analyze than its playback duration. The supplied football example's 05:53 match clock corresponds to about 06:38 on the video timeline.
+
+Qwen results show a review badge and the model's visible-evidence description; this is not a calibrated confidence score. Review and add candidates once the scan finishes or is cancelled. Editing and exporting remain available during analysis. Completed sections are cached so repeating or restarting the same search can reuse them. Partial candidates remain available after cancellation. Qwen is visual-only, can mistake replays or chances for goals, and does not guarantee all events. It supports arbitrary event descriptions without selecting a game/sport profile. Up to 1,000 candidates are shown, with five seconds of lead-in and three seconds after the estimated event, bounded by the original source.
+
+The packaged app includes Qwen. If the model files are unavailable, **Choose model folder** selects a prepared `qwen-runtime` folder containing `models/` and the pinned Windows runtime. A valid selection is remembered locally. The quick visual scanner remains the default.
 
 Sound is optional. There is no speech recognition and no commentary-language requirement. Scanning, preview conversion, and exports run without uploading footage or audio. The packaged model is already installed; scanning does not download models or contact a cloud inference provider.
 
@@ -58,12 +64,15 @@ With no shot selected, framing controls set the layout for new shots, including 
 
 ## Build and verify
 
+The separate **Qwen3-VL local benchmark** remains available for comparing model settings and recognition quality. The app now offers Qwen as an experimental engine alongside its default quick visual scanner. See [the benchmark guide](docs/qwen-benchmark.md) for commands, hardware measurements, and recognition limitations.
+
 ```powershell
 pnpm typecheck
 pnpm test
 pnpm test:e2e
 pnpm test:highlights:e2e
 pnpm test:framing:e2e
+pnpm test:qwen:e2e
 pnpm package
 ```
 
@@ -74,6 +83,8 @@ pnpm package
 `pnpm test:highlights:e2e` scans a silent activity fixture through the real UI, previews and approves a suggestion, dismisses another, exports the approved shot, checks persistence, and cancels a second scan during model startup. Unit/integration tests also exercise the actual bundled vision model, all three profiles, cache reuse, source changes, and scan lifecycle recovery. These fixtures verify the pipeline, not goal/save detection accuracy on real matches.
 
 `pnpm test:framing:e2e` verifies full-picture fitting, custom zoom and placement, preview dragging, aspect ratios, background choices, defaults, applying a layout to all shots without shifting keyframes, immutable queued layouts, and recovery after reopening. It compares actual exported pixels with the canvas preview and checks the compact workspace. Real FFmpeg tests also cover all four output sizes and animated fitted placement.
+
+`pnpm test:qwen:e2e` uses the actual local Qwen model through the app's engine selector, query and range controls, previews/adds a candidate, edits while scanning, exports, reopens saved results, verifies cache reuse, and cancels another scan. The packaged run restricts PATH to Windows system directories. Set `TOKFARM_QWEN_SOURCE`, `TOKFARM_QWEN_START`, `TOKFARM_QWEN_END`, and `TOKFARM_QWEN_QUERY` to run against a known local example instead of the controlled default fixture.
 
 To run the same acceptance workflow against an installed executable:
 

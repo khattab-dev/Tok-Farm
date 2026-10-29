@@ -9,6 +9,9 @@ import { z } from 'zod'
 import { Store } from './storage'
 import { ExportQueue } from './queue'
 import { HighlightScanner } from './highlight-scanner'
+import { scanHighlights } from './highlight-engine'
+import { scanQwenHighlights } from './qwen-highlights'
+import { getQwenStatus } from './qwen-runtime'
 import { ScanOptionsSchema } from '../shared/highlights'
 import { assertSource, generateProxy, generateThumbnails, probeMedia } from './media'
 import { ProjectSchema, type AppEvent, type Project } from '../shared/model'
@@ -238,6 +241,22 @@ function setupHandlers(cache: string) {
     proxyTasks.get(idSchema.parse(input))?.abort()
   })
   handle('get-highlight-scan', (input: unknown) => scanner.get(idSchema.parse(input)))
+  handle('qwen-status', () => getQwenStatus(store.settings.qwenRoot))
+  handle('choose-qwen-folder', async () => {
+    const result = await dialog.showOpenDialog(window!, {
+      title: 'Choose prepared Qwen model folder',
+      properties: ['openDirectory']
+    })
+    if (result.canceled) return getQwenStatus(store.settings.qwenRoot)
+    const root = resolve(result.filePaths[0]),
+      status = await getQwenStatus(root)
+    if (!status.ready) throw new Error(status.message)
+    if (status.ready) {
+      store.settings.qwenRoot = root
+      await store.persist()
+    }
+    return status
+  })
   handle('start-highlight-scan', (input: unknown, options: unknown) =>
     scanner.start(idSchema.parse(input), ScanOptionsSchema.parse(options))
   )
@@ -348,7 +367,15 @@ if (gotLock)
       const cache = join(app.getPath('userData'), 'media-cache')
       await mkdir(cache, { recursive: true })
       queue = new ExportQueue(store, (value) => emit({ type: 'queue', queue: value }))
-      scanner = new HighlightScanner(store, cache, (scan) => emit({ type: 'highlight-scan', scan }))
+      scanner = new HighlightScanner(
+        store,
+        cache,
+        (scan) => emit({ type: 'highlight-scan', scan }),
+        (...args) =>
+          args[1].engine === 'qwen'
+            ? scanQwenHighlights(...args, store.settings.qwenRoot)
+            : scanHighlights(...args)
+      )
       protocol.handle('tokfarm-media', mediaResponse)
       const rendererRoot = resolve(__dirname, '../renderer')
       protocol.handle('tokfarm', (request) => {

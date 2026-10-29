@@ -30,6 +30,14 @@ export class HighlightScanner {
     this.starting = true
     try {
       const project = this.store.getProject(projectId)
+      if (
+        options.engine === 'qwen' &&
+        options.range &&
+        options.range.end > project.media.duration + 0.001
+      )
+        throw new Error(
+          'Scan range exceeds the source video. Use video timestamps, not the match clock.'
+        )
       await assertSource(project.media)
       const scan: HighlightScan = {
         projectId,
@@ -66,6 +74,8 @@ export class HighlightScanner {
         (value) => {
           scan.phase = value.phase
           scan.progress = value.progress
+          scan.detail = value.detail
+          if (value.suggestions) scan.suggestions = value.suggestions
           if (Date.now() - lastUpdate > 250) {
             lastUpdate = Date.now()
             this.emit(structuredClone(scan))

@@ -1,5 +1,9 @@
 # Third-party software bundled with Tok Farm
 
+## Optional Qwen benchmark assets
+
+`pnpm prepare:qwen` downloads Qwen3-VL-2B-Instruct GGUF weights from [Qwen's official repository](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF), licensed under Apache-2.0, and a Windows build of [llama.cpp](https://github.com/ggml-org/llama.cpp), licensed under MIT. Version 1.3 packages bundle these files in `resources/qwen-runtime/`; they were not included in the version 1.2 installer. Pinned revisions, file sizes, and SHA-256 hashes are recorded in `scripts/qwen-assets.json`; licenses and provenance are copied to `build/qwen-runtime/` during preparation and shipped beside the model. The runtime's LLVM/OpenMP notices remain alongside its DLLs. See `docs/qwen-benchmark.md` for model and fixture provenance.
+
 Tok Farm invokes FFmpeg and FFprobe as separate executable programs. They retain their own licenses. The application's MIT license does not replace the licenses of those programs or their bundled libraries.
 
 ## FFmpeg and FFprobe

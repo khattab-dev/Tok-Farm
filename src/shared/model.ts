@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { HighlightScan, ScanOptions } from './highlights'
+import type { QwenStatus } from './qwen'
 
 const finite = z.number().finite()
 export const FramingSchema = z.object({
@@ -106,6 +107,8 @@ export interface TokFarmAPI {
   createProxy(projectId: string): Promise<string>
   cancelProxy(projectId: string): Promise<void>
   getHighlightScan(projectId: string): Promise<HighlightScan | null>
+  getQwenStatus(): Promise<QwenStatus>
+  chooseQwenFolder(): Promise<QwenStatus>
   startHighlightScan(projectId: string, options: ScanOptions): Promise<HighlightScan>
   cancelHighlightScan(projectId: string): Promise<void>
   acceptHighlight(project: Project, suggestionId: string): Promise<Clip>
